@@ -1,0 +1,339 @@
+import pymysql
+import requests
+import re
+from lxml import etree
+import time
+from fontTools.ttLib import TTFont
+from bs4 import BeautifulSoup
+# 查找出名称、是否团购、评论数量、评论链接、人均消费、口味、环境、服务、菜系、商圈、
+# 二级嵌套，通过评论链接把评论标签找出来
+def get_cookies():
+    cookies={}
+    f=open('cookis.txt','r')
+    for i in f.read().split(';'):
+         n,p=i.split('=',1)
+         cookies[n]=p
+    return cookies
+
+def get_one_page(url):
+    headers={
+        'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.117 Safari/537.36',
+        'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'Accept-Encoding':'gzip, deflate',
+        'Accept-Language':'zh-CN,zh;q=0.9',
+        'Connection':'keep-alive',
+        'Host':'www.dianping.com',
+    }
+    proxy = {
+        'HTTP': '60.167.23.112:9999'
+    }
+    cookies = get_cookies()
+    response = requests.get(url, headers=headers, cookies=cookies, proxies=proxy)
+    response.encoding = "utf-8"
+    result = response.text
+    return result
+def css_url(html):
+    pattern=re.compile(r'//s3plus\..*?\.css')
+    url=pattern.findall(html)
+    url1=''.join(url)
+    cssurl='http:'+url1
+    f=requests.get(cssurl)
+    f.encoding='utf-8'
+    f1=f.text
+    shopnumfont=re.findall(r'@font-face{font-family: "PingFangSC-Regular-shopNum".*?shopNum{font-family: \'PingFangSC-Regular-shopNum\';}',f1)
+    shopnum=''.join(shopnumfont)
+    tagnamefont=re.findall(r'@font-face{font-family: "PingFangSC-Regular-tagName".*?tagName{font-family: \'PingFangSC-Regular-tagName\';}',f1)
+    tagname=''.join(tagnamefont)
+    return shopnum,tagname
+def unicode_dict(shopnum):
+    shopnumlist = re.findall(r'//s3plus.meituan.net/v1/\w+/font/\w+\.woff',shopnum)
+    shopnumurl = "http:" + ''.join(shopnumlist)
+    response_shopnumwoff = requests.get(shopnumurl).content
+    fontname = shopnumurl[-13:-5]
+    h=open(fontname + '.woff', 'wb')
+    h.write(response_shopnumwoff)
+    h.close()
+    newfont = TTFont(fontname + '.woff')
+    newfont.saveXML(fontname + '.xml')
+    basefont = TTFont('1d7914a7.woff')
+    unicodedict = {"unie046": "跟", "unif305": "块", "unif230": "1", "unie713": "2", "unie86f": "3", "unie5f3": "4",
+                        "unif235": "5", "unie7c3": "6", "unif558": "7", "unie383": "8", "unif5f6": "9", "unie8f4": "0",
+                        "unieb6b": "店", "unie015": "中", "unif44f": "美", "unif4fe": "家", "unif5b5": "馆", "unie6b4": "小",
+                        "unif78b": "车", "unie0a1": "大", "unif191": "市", "unie5eb": "公", "unif33f": "酒",
+                        "unif0a1": "行", "unie19a": "国", "unie075": "品", "unie4d5": "发", "unif2ed": "电", "uniea88": "金",
+                        "uniec19": "心", "unie240": "业", "unif77e": "商", "unif87a": "司", "unief51": "超", "unie877": "生",
+                        "uniebf3": "装", "unied5e": "园", "unie0c0": "场", "unie723": "食", "unif167": "有", "uniec25": "新",
+                        "unief2b": "限", "unieb71": "天", "unie36b": "面", "unie4e5": "工", "unie820": "服",
+                        "unieb69": "海", "unie591": "华", "unif5ab": "水", "unif653": "房", "unie3d5": "饰", "unif48e": "城",
+                        "unif042": "乐", "unie31f": "汽", "unif76c": "香", "unie056": "部", "unie5b9": "利", "unif860": "子",
+                        "unie661": "老", "unif316": "艺", "unie714": "花", "unif101": "专", "uniedf8": "东", "unie66e": "肉",
+                        "unif6eb": "菜", "unif897": "学", "unif2a7": "福", "unie148": "饭", "unif313": "人",
+                        "uniedf7": "百", "unied1a": "餐", "unif7be": "茶", "unie32e": "务", "unie63b": "通", "unie45b": "味",
+                        "unif397": "所", "unieda8": "H1", "unie761": "区", "unif6cf": "门", "unie424": "药", "uniedc9": "银",
+                        "unif87c": "农", "unie462": "龙", "unie04a": "停", "unie610": "尚", "unif0ea": "安", "unie913": "广",
+                        "unie399": "鑫", "uniebb2": "—", "unie04b": "容", "unie21a": "动", "unie225": "南",
+                        "unif024": "具", "unif165": "源", "unie259": "兴", "uniecb3": "鲜", "unie4a3": "记", "unif109": "时",
+                        "unif4ed": "机", "unie5c7": "烤", "unif276": "文", "unie538": "康", "unied4c": "信", "uniedca": "果",
+                        "unif1d5": "阳", "unif6f9": "理", "unie83a": "锅", "unif7e1": "宝", "unif094": "达", "unif18e": "地",
+                        "unif35a": "儿", "unie82c": "衣", "unie4f8": "特", "unie3c4": "产", "unif0bb": "西",
+                        "unie333": "批", "uniecf1": "坊", "unif5cc": "州", "unif16f": "牛", "unieb43": "佳", "unif7ea": "化",
+                        "unif584": "五", "unie17d": "米", "unif780": "修", "unif09a": "爱", "unie14f": "北", "unie619": "养",
+                        "unie9c6": "卖", "unie545": "建", "unif83c": "材", "unie3d8": "三", "uniece0": "会", "unif086": "鸡",
+                        "unieadd": "室", "uniedbc": "红", "unie141": "站", "unif310": "德", "unie6b5": "王",
+                        "uniea7d": "光", "unied44": "名", "unif6f0": "丽", "unie9be": "油", "uniedba": "院", "unif848": "堂",
+                        "unif793": "烧", "unie668": "江", "unif259": "社", "uniefa6": "合", "unif61b": "星", "unieadf": "货",
+                        "unie58d": "型", "unie868": "村", "unieb7e": "自", "uniee47": "科", "unieeb1": "快", "uniec0e": "便",
+                        "unif203": "日", "unif266": "民", "unie353": "营", "unieea5": "和", "unie6f2": "活",
+                        "unied85": "童", "unieb3f": "明", "unif083": "器", "unie344": "烟", "unie3a1": "育", "unieef4": "宾",
+                        "unie202": "精", "unif19c": "屋", "unie45f": "经", "unieb1f": "居", "unie5e1": "庄", "unif2ad": "石",
+                        "unif130": "顺", "unie53d": "林", "unieaff": "尔", "unie3a7": "县", "unif8ca": "手", "unif2d4": "厅",
+                        "unie650": "销", "uniecb9": "用", "uniee27": "好", "unif142": "客", "unieb67": "火",
+                        "uniea57": "雅", "unif645": "盛", "unie6b3": "体", "unif14e": "旅", "unif2a4": "之", "unied52": "鞋",
+                        "unie8f2": "辣", "uniee8e": "作", "unie32a": "粉", "unie99a": "包", "unie8f0": "楼", "unif5f1": "校",
+                        "unie7ed": "鱼", "unie041": "平", "unie0fb": "彩", "unie7d1": "上", "uniee6f": "吧", "unie636": "保",
+                        "unie4c8": "永", "unie2b6": "万", "unie11f": "物", "unif3ad": "教", "unie93b": "吃",
+                        "unie999": "设", "unie596": "医", "unif5b7": "正", "unif560": "造", "unie958": "丰", "unie2a5": "健",
+                        "unief63": "点", "unif047": "汤", "unif74d": "网", "unie07a": "庆", "unif1f2": "技", "unie84e": "斯",
+                        "unif64f": "洗", "uniec6c": "料", "unif1b7": "配", "unif124": "汇", "uniea8a": "木", "unif5b8": "缘",
+                        "unif2dd": "加", "unif80e": "麻", "unif460": "联", "unie27e": "卫", "unie014": "川",
+                        "unie6d7": "泰", "unie984": "色", "unif375": "世", "unif264": "方", "unied69": "寓", "unie309": "风",
+                        "uniebde": "幼", "unif43c": "羊", "unieaa9": "烫", "unif32d": "来", "unif8e0": "高", "unif1d4": "厂",
+                        "unie558": "兰", "unif679": "阿", "unif0cc": "贝", "unied10": "皮", "uniefe6": "全", "unif2f7": "女",
+                        "unif179": "拉", "unieb4f": "成", "unif054": "云", "unif11e": "维", "unif12d": "贸",
+                        "unie87a": "道", "unif1ce": "术", "uniecac": "运", "unie518": "都", "unif62e": "口", "unif63f": "博",
+                        "unif8c0": "河", "unif862": "瑞", "unie66c": "宏", "unieb86": "京", "unie9ba": "际", "unif5db": "路",
+                        "uniee63": "祥", "unif3a5": "青", "unie9fa": "镇", "unie0c1": "厨", "unif27a": "培", "uniecbc": "力",
+                        "unie34b": "惠", "unie52d": "连", "unif6af": "马", "unief31": "鸿", "unie537": "钢",
+                        "unie930": "影", "uniefb5": "甲", "unif808": "助", "unif0c3": "窗", "unie17f": "布", "unie24f": "富",
+                        "unie3ce": "牌", "unie6f9": "头", "unif242": "四", "unif144": "多", "unie95f": "妆", "unif50a": "吉",
+                        "unie686": "苑", "unif7ba": "沙", "unie2fd": "恒", "unie531": "隆", "unif72a": "春", "unie777": "干",
+                        "uniedd1": "饼", "unif1e5": "氏", "uniea6c": "里", "unif3a1": "二", "unie605": "训",
+                        "unie1aa": "诚", "unie05b": "制", "unif322": "售", "unie49e": "嘉", "unie529": "长", "unif0de": "轩",
+                        "unif22c": "杂", "unie9c9": "副", "unif5a3": "清", "unieb83": "计", "unie042": "黄", "unif86a": "讯",
+                        "unie7d8": "太", "unie1ad": "鸭", "unie1b0": "号", "unie12b": "街", "unie651": "交", "uniee09": "与",
+                        "unie300": "叉", "unif39b": "附", "unie614": "近", "uniecfa": "层", "unif2f3": "管",
+                        "unied4a": "对", "unif5c4": "巷", "uniea58": "栋", "unif81f": "环", "unif2f5": "省", "unie371": "桥",
+                        "unie3aa": "湖", "unie34d": "段", "unieaa5": "乡", "unie24c": "厦", "unif799": "府", "unieeb3": "铺",
+                        "unif8d4": "内", "unif605": "侧", "unie067": "元", "uniebc1": "购", "unie851": "前", "unif663": "幢",
+                        "unif8f9": "滨", "uniee74": "处", "unied6a": "向", "unif619": "座", "unie51b": "旁",
+                        "unie32d": "県", "unif4cf": "凤", "unif65a": "港", "unif881": "开", "unie11d": "关", "unie7a0": "景",
+                        "unif16e": "泉", "unie535": "塘", "unie58a": "放", "unie7a7": "昌", "uniee85": "线", "unied77": "湾",
+                        "unieec9": "政", "unie44d": "步", "unie4be": "宁", "unif1cd": "解", "unie5c9": "白", "unif85d": "田",
+                        "unie40a": "町", "unif22d": "溪", "unif70f": "十", "unie0a2": "八", "unie6f6": "下",
+                        "uniec80": "双", "unif640": "胜", "unif127": "本", "unie976": "单", "uniea15": "同", "unie9e1": "九",
+                        "unie428": "迎", "unie4c3": "第", "unif31b": "台", "unie9a8": "玉", "unie1a7": "锦", "unif87f": "底",
+                        "unieba1": "后", "unieabb": "七", "uniee42": "斜", "uniea9f": "期", "unie6a4": "武", "unie2e1": "岭",
+                        "uniefab": "松", "unie914": "角", "unif482": "纪", "unie1c3": "朝", "unie91e": "古",
+                        "unif7c2": "六", "unif38a": "振", "uniedef": "珠", "unie727": "局", "unif5cf": "冈", "unif76d": "洲",
+                        "unif65f": "横", "unif6e7": "边", "unif0ad": "济", "unif844": "井", "unif53e": "办", "unieb24": "汉",
+                        "unie478": "代", "unie185": "临", "unif6dd": "弄", "unie188": "团", "unif5e7": "外", "unie7be": "塔",
+                        "unie1d6": "杨", "unie8b6": "铁", "unif323": "浦", "unie632": "字", "unif8c6": "峰",
+                        "unied9a": "年", "unie0bf": "岛", "unie630": "陵", "unie8d9": "原", "unif08e": "梅", "unie2ff": "进",
+                        "unie0f7": "荣", "uniefca": "友", "unif772": "虹", "unie5bd": "央", "uniedda": "桂", "unif177": "沿",
+                        "unie3f4": "事", "unif4c5": "津", "unif5a6": "凯", "unie0e2": "莲", "unif61e": "丁", "uniedaf": "秀",
+                        "unif37c": "柳", "unif1e0": "集", "unif15d": "紫", "unie2a6": "旗", "unief2e": "张",
+                        "unie82e": "谷", "unie5b2": "的", "unie623": "是", "unif581": "不", "unieb8b": "了", "unieff9": "很",
+                        "unie6de": "还", "unie4d2": "个", "unif4aa": "也", "uniec6b": "这", "unie7bc": "我", "unif1b2": "就",
+                        "unief6b": "在", "uniea9c": "以", "unif41f": "可", "unie46d": "到", "uniea94": "错", "unie7ba": "没",
+                        "unif70c": "去", "unif0f0": "过", "unie2e2": "感", "unie083": "次", "uniecfc": "要",
+                        "unie0cd": "比", "unif6df": "觉", "uniedd7": "看", "uniea00": "得", "unie6f8": "说", "unie338": "常",
+                        "unif83b": "真", "unie59e": "们", "unieae9": "但", "unif1e2": "最", "uniee95": "喜", "unif8d1": "哈",
+                        "unieac9": "么", "uniedf9": "别", "unie625": "位", "unie3f9": "能", "unif4fb": "较", "uniee3e": "境",
+                        "unif275": "非", "unif140": "为", "unif7aa": "欢", "unie712": "然", "unie4bf": "他",
+                        "unie635": "挺", "uniea12": "着", "unif1cf": "价", "unied32": "那", "unieff6": "意", "unied89": "种",
+                        "unif166": "想", "unieafd": "出", "unie6a6": "员", "unif098": "两", "unie057": "推", "unie762": "做",
+                        "unif55f": "排", "unief94": "实", "unif05f": "分", "unif092": "间", "unie19b": "甜", "unieb6c": "度",
+                        "unif4a9": "起", "unif735": "满", "unie151": "给", "unie2d5": "热", "unie890": "完",
+                        "unif2e6": "格", "unie849": "荐", "unif05e": "喝", "uniea97": "等", "unie6fb": "其", "unif5f4": "再",
+                        "unif7b3": "几", "unie61b": "只", "unie992": "现", "unif641": "朋", "unie692": "候", "unieefb": "样",
+                        "unieffd": "直", "unieb54": "而", "unif7ec": "买", "unif0ff": "于", "unie1e1": "般", "unie60a": "豆",
+                        "unif4e3": "量", "unie4b8": "选", "unif129": "奶", "unif5f0": "打", "unie5ec": "每",
+                        "unif2a1": "评", "unie3c8": "少", "unif03d": "算", "unie409": "又", "unif317": "因", "unif670": "情",
+                        "unif747": "找", "unie0c4": "些", "unif3a9": "份", "unie5fc": "置", "unif1ae": "适", "unie99b": "什",
+                        "unif2b3": "蛋", "unief68": "师", "uniea92": "气", "unif02c": "你", "unif3a0": "姐", "unie2c7": "棒",
+                        "unie90d": "试", "unieb73": "总", "unif5ad": "定", "unif14b": "啊", "uniee54": "足",
+                        "unif270": "当", "unif8f3": "更", "unie94d": "板", "unif3f1": "知", "unieb84": "己", "unie81f": "无",
+                        "unif2e3": "酸", "unie2b4": "让", "unie65d": "入", "unie7df": "啦", "unie7e9": "式", "unie003": "笑",
+                        "unieb9a": "级", "unie876": "赞", "unie4b7": "拍", "unie99e": "整", "unif577": "带", "unie3fc": "片",
+                        "unif26d": "酱", "unif5b1": "虾", "unie500": "如", "unif78c": "态", "unie666": "且",
+                        "unie794": "午", "unif1be": "接", "unif23b": "重", "unieed3": "串", "unif3e0": "回", "unif8b7": "晚",
+                        "unif499": "微", "unie32b": "周", "unieef9": "值", "unif4bc": "费", "unif0cd": "性", "unif2a2": "桌",
+                        "unif27b": "刚", "unif038": "才", "uniefaa": "提", "unie325": "队", "unif29b": "走", "unie343": "嫩",
+                        "unif18d": "话", "unied07": "强", "uniece1": "调", "unie9bf": "糕", "unief4c": "像",
+                        "uniea6b": "尝", "unie35c": "主", "unie2d4": "差"}
+    newfont_glyphNames=newfont.getGlyphNames()[1:-1]
+    basefont_glyphNames=basefont.getGlyphNames()[1:-1]
+    temp={}
+    a=len(unicodedict)
+    for i in range(0,a):
+        for j in range(0,a):
+            if newfont['glyf'][newfont_glyphNames[i]]==basefont['glyf'][basefont_glyphNames[j]]:
+                temp[newfont_glyphNames[i].replace('uni','&#x').lower()]=unicodedict[basefont_glyphNames[j]]
+            else:
+                pass
+    return temp
+def parse_shuju_num(html,shopnumdict,tagnamedict):
+    items=re.compile(r'<li class="" >(.*?)</li>',re.S|re.M|re.I)
+    item_list=items.findall(html)
+    for item in item_list:
+        pattern1 = re.compile(r'<div class="comment">(.*?)<div class="tag-addr">',re.S|re.M|re.I)
+        pattern2 = re.compile(r'<div class="tag-addr">(.*?)<span class="addr">',re.S|re.M|re.I)
+        pattern3 = re.compile(r'<span class="comment-list">(.*?)<div class="operate J_operate Hide">',re.S|re.M|re.I)
+        item1 = str(re.findall(pattern1,item))
+        item2 = str(re.findall(pattern2,item))
+        item3 = str(re.findall(pattern3,item))
+        pattern11=re.compile(r'<b>(.*?)</b>')
+        shuju1=pattern11.findall(item1)
+        pattern22=re.compile(r'<span class="tag">(.*?)</span>')
+        shuju2=pattern22.findall(item2)
+        pattern33=re.compile(r'<span >(.*?)</span>')
+        shuju3=pattern33.findall(item3)
+        pingjia=re.findall(r'(\d*)<svgmtsi class="shopNum">(.*?);</svgmtsi>(.*?)',shuju1[0])
+        renjun=re.findall(r'(.*?)<svgmtsi class="shopNum">(.*?);</svgmtsi>(\d*)',shuju1[1])
+        caixi=re.findall(r'(.*?)<svgmtsi class="tagName">(.*?);</svgmtsi>',shuju2[0])
+        shangquan=re.findall(r'(.*?)<svgmtsi class="tagName">(.*?);</svgmtsi>',shuju2[1])
+        kouweiscore=re.findall(r'<svgmtsi class="shopNum">(.*?);</svgmtsi>(\.*\d*)',shuju3[0])
+        huanjingscore=re.findall(r'<svgmtsi class="shopNum">(.*?);</svgmtsi>(\.*\d*)',shuju3[1])
+        fuwuscore=re.findall(r'<svgmtsi class="shopNum">(.*?);</svgmtsi>(\.*\d*)',shuju3[2])
+        href = re.compile(r'<a onclick="LXAnalytics.*? href="(.*?)" .*?</a>', re.S | re.M | re.I)
+        hreflist = re.findall(href, item)
+        shopid = re.compile(r'<a onclick="LXAnalytics.*? data-shopid="(\d+)" .*?</a>', re.S | re.M | re.I)
+        shopidlist = re.findall(shopid, item)
+        name = re.compile(r'<a onclick="LXAnalytics.*?<h4>(.*?)</h4>.*?</a>', re.S | re.M | re.I)
+        namelist = re.findall(name, item)
+        xingji = re.compile(r'<span class="sml-rank-stars .*?" title="(.*?)"></span>', re.S | re.M | re.I)
+        xingjilist = re.findall(xingji, item)
+        yingxiaofangshi = re.compile(r'<a rel="nofollow" .*? class="(.*?)".*?</a>', re.S | re.M | re.I)
+        yingxiaofangshilist = re.findall(yingxiaofangshi, item)
+        if yingxiaofangshilist != []:
+            yingxiao_list = []
+            leixingdict = {'igroup': "团购", 'igroup icon-only': "团购", 'iout': "外卖", 'iout ': "外卖", 'ipromote ': "促销",
+                           'iout icon-only': "外卖", 'ipromote': "促销", 'ipromote icon-only': "促销", 'shop-branch': "分店",
+                           'search-ad': "广告"}
+            for a in yingxiaofangshilist:
+                if a in leixingdict.keys():
+                    a = leixingdict[a]
+                else:
+                    a
+                yingxiao_list.append(a)
+            yingxiao = ','.join(yingxiao_list)
+        else:
+            yingxiao = '无'
+        pingjialist =[]
+        for k in pingjia:
+            for g in k:
+                if len(g)==7:
+                    g=shopnumdict[g]
+                else:
+                    g
+                pingjialist.append(g)
+        pingjia_shopnum=''.join(pingjialist)
+        renjunlist = []
+        for k in renjun:
+            for g in k:
+                if len(g) == 7:
+                    g = shopnumdict[g]
+                else:
+                    g
+                renjunlist.append(g)
+        meanprice_shopnum = ''.join(renjunlist)
+        caixilist = []
+        for k in caixi:
+            for g in k:
+                if len(g) == 7:
+                    g = tagnamedict[g]
+                else:
+                    g
+                caixilist.append(g)
+        caixi_tagname = ''.join(caixilist)
+        shangquanlist = []
+        for k in shangquan:
+            for g in k:
+                if len(g) == 7:
+                    g = tagnamedict[g]
+                else:
+                    g
+                shangquanlist.append(g)
+        shangquan_tagname = ''.join(shangquanlist)
+        kouweilist = []
+        for k in kouweiscore:
+            for g in k:
+                if len(g) == 7:
+                    g = shopnumdict[g]
+                else:
+                    g
+                kouweilist.append(g)
+        kouwei_shopnum = ''.join(kouweilist)
+        huanjingscorelist = []
+        for k in huanjingscore:
+            for g in k:
+                if len(g) == 7:
+                    g = shopnumdict[g]
+                else:
+                    g
+                huanjingscorelist.append(g)
+        huanjing_shopnum = ''.join(huanjingscorelist)
+        fuwuscorelist = []
+        for k in fuwuscore:
+            for g in k:
+                if len(g) == 7:
+                    g = shopnumdict[g]
+                else:
+                    g
+                fuwuscorelist.append(g)
+        fuwu_shopnum = ''.join(fuwuscorelist)
+        yield {
+            'pingjia':pingjia_shopnum,
+            'meanprice':meanprice_shopnum,
+            'caixi':caixi_tagname,
+            'addr':shangquan_tagname,
+            'kouweiscore':float(kouwei_shopnum),
+            'enivscore':float(huanjing_shopnum),
+            'servicescore':float(fuwu_shopnum),
+            'href': hreflist[0],
+            'shopid': shopidlist[0],
+            'name': namelist[0].strip(),
+            'xingji': xingjilist[0].strip(),
+            'yingxiaofangshi': yingxiao
+            }
+
+def mysql_one_page(content):
+    conn=pymysql.connect(host='localhost',user='root',passwd='123456',db='dazhongdianping',charset='utf8')
+    cursor=conn.cursor()
+    name=content['name']
+    xingji=content['xingji']
+    shopid=content['shopid']
+    pingjia=content['pingjia']
+    meanprice=content['meanprice']
+    caixi=content['caixi']
+    addr=content['addr']
+    kouweiscore=content['kouweiscore']
+    enivscore=content['enivscore']
+    servicescore=content['servicescore']
+    yingxiaofangshi=content['yingxiaofangshi']
+    href=content['href']
+    sql='insert into dianping values(null,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+    parm=(name,xingji,shopid,pingjia,meanprice,caixi,addr,kouweiscore,enivscore,servicescore,yingxiaofangshi,href)
+    cursor.execute(sql,parm)
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def main(num):
+    url='http://www.dianping.com/tianjin/ch10'
+    html1=get_one_page(url)
+    fenleiurls=fenlei_url(html1)
+    for fenleiurl in fenleiurls:
+        url = fenleiurl + "p"+str(num)
+        html = get_one_page(url)
+        a, b = css_url(html)
+        shopnumdict = unicode_dict(a)
+        tagnamedict = unicode_dict(b)
+        content = parse_shuju_num(html, shopnumdict, tagnamedict)
+        for i in content:
+            mysql_one_page(i)
+        time.sleep(60)
+
+if __name__=='__main__':
+    for num in range(1, 51):
+        main(num)
